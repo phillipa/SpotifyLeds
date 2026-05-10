@@ -42,6 +42,25 @@ python3 spotify_led_http.py
 
 It prints the web UI URL on startup, e.g. `http://yourmac.local:8080/`. Open it on your phone to control the strip live.
 
+## File layout
+
+| File | Purpose |
+| --- | --- |
+| [spotify_led_http.py](spotify_led_http.py) | Entry point. Audio capture loop, settings store, HTTP wiring. |
+| [led_effects.py](led_effects.py) | Palettes, gradient builder, four effect classes, WLED UDP packet builder. |
+| [web_ui.py](web_ui.py) | `http.server`-based JSON API. State management is injected via callables. |
+| [index.html](index.html) | Mobile-first control panel (vanilla JS, no build step). |
+| [TestingScripts/](TestingScripts/) | Standalone helpers: audio device enumeration, a sACN/DMX smoke test, and an earlier prototype. |
+
+## Web UI
+
+- `GET /` — control panel (served from [index.html](index.html))
+- `GET /state` — current settings as JSON, plus enum metadata (palette/mode/boundary lists)
+- `POST /state` — JSON patch of any subset of settings; unknown keys and out-of-range values are dropped
+- `POST /randomize` — re-rolls mode, color mode, palette, and color
+
+The audio loop and HTTP handler share `settings` under a lock; structural changes (`mode`, `color_mode`, `agents_count`) rebuild the effect, while tunables update live without resetting effect state.
+
 ## Effects
 
 | Mode | Behavior |
@@ -57,23 +76,28 @@ Color modes apply to all effects:
 - `palette_linear` — LED *i* uses the *i*-th color of the palette (rotates over time)
 - `palette_random` — each LED picks a random palette color, fixed across frames
 
-19 named palettes are defined in [led_effects.py](led_effects.py:9-32) (`rainbow`, `fire`, `ocean`, `sunset`, `synthwave`, `lava`, etc.).
+### Palettes
 
-## Web UI
+All palettes are defined in [led_effects.py](led_effects.py:9-32) as ordered RGB stops; `palette_gradient` linearly interpolates them across the strip.
 
-- `GET /` — control panel (served from [index.html](index.html))
-- `GET /state` — current settings as JSON, plus enum metadata (palette/mode/boundary lists)
-- `POST /state` — JSON patch of any subset of settings; unknown keys and out-of-range values are dropped
-- `POST /randomize` — re-rolls mode, color mode, palette, and color
-
-The audio loop and HTTP handler share `settings` under a lock; structural changes (`mode`, `color_mode`, `agents_count`) rebuild the effect, while tunables update live without resetting effect state.
-
-## File layout
-
-| File | Purpose |
-| --- | --- |
-| [spotify_led_http.py](spotify_led_http.py) | Entry point. Audio capture loop, settings store, HTTP wiring. |
-| [led_effects.py](led_effects.py) | Palettes, gradient builder, four effect classes, WLED UDP packet builder. |
-| [web_ui.py](web_ui.py) | `http.server`-based JSON API. State management is injected via callables. |
-| [index.html](index.html) | Mobile-first control panel (vanilla JS, no build step). |
-| [TestingScripts/](TestingScripts/) | Standalone helpers: audio device enumeration, a sACN/DMX smoke test, and an earlier prototype. |
+| Name | Vibe | Stops (hex) |
+| --- | --- | --- |
+| `rainbow` | Full-spectrum rainbow, loops back to red | `#FF0000` `#FFFF00` `#00FF00` `#00FFFF` `#0000FF` `#FF00FF` `#FF0000` |
+| `fire` | Black → red → orange → yellow → white | `#000000` `#800000` `#FF0000` `#FF8000` `#FFFF00` `#FFFFFF` |
+| `ocean` | Deep navy through cyan to pale aqua | `#000020` `#004080` `#0080FF` `#80FFFF` |
+| `sunset` | Dusky violet, hot pink, orange, gold | `#140028` `#FF0080` `#FF8000` `#FFDC50` |
+| `forest` | Dark green through bright leaf-green | `#001000` `#005010` `#20A020` `#B4DC50` |
+| `purples` | Dark plum to lavender pink | `#140028` `#5000A0` `#B450FF` `#FFC8FF` |
+| `purplesgreens` | Moody, low-brightness purple/green alternation | `#280028` `#001000` `#140014` `#002000` |
+| `lava` | Black → dark red → molten orange-red | `#000000` `#3C0000` `#C81E00` `#FF6400` `#FFC83C` `#FF3200` |
+| `embers` | Glowing coals; low overall brightness | `#000000` `#280000` `#A01400` `#FF5014` `#5A0A00` |
+| `arctic` | Navy → icy blue → white | `#081020` `#2864B4` `#8CC8FF` `#F0FFFF` `#B4DCF0` |
+| `neon` | Hot pink, cyan, lime, magenta — all max-saturation | `#FF00C8` `#00FFF0` `#C8FF00` `#FF3CC8` |
+| `synthwave` | Retro purple/magenta/cyan | `#14003C` `#FF00B4` `#5000C8` `#00DCFF` `#3C0078` |
+| `cyberpunk` | Mostly dark with green accents and bright pops | `#000000` `#002800` `#00781E` `#28DC3C` `#A0FFB4` `#003C0A` |
+| `autumn` | Browns, burnt orange, gold | `#1E0800` `#B43200` `#DC6E00` `#F0B41E` `#6E320A` |
+| `tropical` | Teal, mint, gold, coral, magenta | `#006464` `#28DCC8` `#FFC850` `#FF6450` `#C83296` |
+| `mint` | Dark teal through mint to near-white | `#001E1E` `#28B48C` `#A0F0C8` `#F0FFF0` `#3CC8B4` |
+| `candy` | Bright pink, teal, gold, purple | `#FF3CA0` `#28C8B4` `#FFB428` `#A03CF0` `#FF64C8` |
+| `berry` | Deep aubergine through hot pink and magenta | `#140014` `#780042` `#DC0064` `#FF50A0` `#8C0050` |
+| `citrus` | Yellow, orange, lime — all bright | `#FFF03C` `#FFA000` `#B4DC00` `#FFC828` |
