@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>LED Control</title>
+<style>
+:root { color-scheme: dark; }
+* { box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  background: #0c0c0e;
+  color: #eaeaea;
+  margin: 0;
+  padding: 1rem 1.25rem 4rem;
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+h1 { font-size: 1.5rem; margin: 0.25rem 0 1.25rem; }
+h2 {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.55;
+  margin: 1.5rem 0 0.5rem;
+  font-weight: 600;
+}
+.row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.6rem;
+}
+.row label {
+  flex: 1;
+  font-size: 0.95rem;
+}
+.row .val {
+  width: 3.5em;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+  font-size: 0.9rem;
+}
+.seg {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 4px;
+  background: #1c1c20;
+  padding: 4px;
+  border-radius: 10px;
+}
+.seg button {
+  background: none;
+  color: #ccc;
+  border: none;
+  padding: 0.7rem 0.5rem;
+  border-radius: 7px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  font-family: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.seg button.active {
+  background: #4dd2a0;
+  color: #0a0a0a;
+  font-weight: 600;
+}
+input[type=range] {
+  flex: 2;
+  -webkit-appearance: none;
+  height: 30px;
+  background: transparent;
+  margin: 0;
+}
+input[type=range]::-webkit-slider-runnable-track {
+  height: 6px;
+  background: #2a2a30;
+  border-radius: 3px;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 26px;
+  height: 26px;
+  background: #4dd2a0;
+  border-radius: 50%;
+  margin-top: -10px;
+  cursor: pointer;
+}
+input[type=color] {
+  width: 60px;
+  height: 40px;
+  border: 1px solid #333;
+  background: #1c1c20;
+  border-radius: 8px;
+  padding: 2px;
+  cursor: pointer;
+}
+select {
+  background: #1c1c20;
+  color: #eaeaea;
+  border: 1px solid #333;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  width: 100%;
+  font-family: inherit;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><polygon points='0,0 12,0 6,8' fill='%23888'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  padding-right: 2.5rem;
+}
+.color-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.color-row label { flex: 1; font-size: 0.95rem; }
+.btn {
+  display: block;
+  width: 100%;
+  background: #2a2a30;
+  color: #eaeaea;
+  border: none;
+  padding: 0.85rem;
+  border-radius: 10px;
+  font-size: 1rem;
+  cursor: pointer;
+  font-family: inherit;
+  margin-top: 0.5rem;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn:active { background: #383840; }
+.hidden { display: none; }
+</style>
+</head>
+<body>
+
+<h1>LED Control</h1>
+
+<h2>Mode</h2>
+<div class="seg" id="mode"></div>
+
+<h2>Color Source</h2>
+<div class="seg" id="color_mode"></div>
+
+<h2>Palette</h2>
+<select id="palette"></select>
+
+<div class="color-row" style="margin-top: 1rem">
+  <label for="color">Solid color</label>
+  <input type="color" id="color">
+</div>
+
+<h2>Auto-Rotate</h2>
+<div class="row">
+  <label>Interval (s, 0 = off)</label>
+  <input type="range" id="randomize_interval" min="0" max="300" step="5">
+  <span class="val" data-for="randomize_interval"></span>
+</div>
+<button class="btn" id="randomize_now">Randomize now</button>
+
+<div id="section-pulse" class="mode-section hidden">
+  <h2>Pulse</h2>
+  <div class="row"><label>Attack</label>
+    <input type="range" id="pulse_attack" min="0.05" max="1" step="0.01">
+    <span class="val" data-for="pulse_attack"></span>
+  </div>
+  <div class="row"><label>Release</label>
+    <input type="range" id="pulse_release" min="0.5" max="0.999" step="0.001">
+    <span class="val" data-for="pulse_release"></span>
+  </div>
+  <div class="row"><label>Gamma</label>
+    <input type="range" id="pulse_gamma" min="0.5" max="4" step="0.1">
+    <span class="val" data-for="pulse_gamma"></span>
+  </div>
+</div>
+
+<div id="section-twinkle" class="mode-section hidden">
+  <h2>Twinkle</h2>
+  <div class="row"><label>Fade</label>
+    <input type="range" id="twinkle_fade" min="0.5" max="0.99" step="0.01">
+    <span class="val" data-for="twinkle_fade"></span>
+  </div>
+  <div class="row"><label>Fade jitter</label>
+    <input type="range" id="twinkle_fade_jitter" min="0" max="0.2" step="0.01">
+    <span class="val" data-for="twinkle_fade_jitter"></span>
+  </div>
+  <div class="row"><label>Density</label>
+    <input type="range" id="twinkle_density" min="0" max="1" step="0.01">
+    <span class="val" data-for="twinkle_density"></span>
+  </div>
+</div>
+
+<div id="section-agents" class="mode-section hidden">
+  <h2>Agents</h2>
+  <div class="row"><label>Count</label>
+    <input type="range" id="agents_count" min="1" max="50" step="1">
+    <span class="val" data-for="agents_count"></span>
+  </div>
+  <div class="row"><label>Fade (per LED)</label>
+    <input type="range" id="agents_fade" min="0.3" max="0.99" step="0.01">
+    <span class="val" data-for="agents_fade"></span>
+  </div>
+  <div class="row"><label>Base speed</label>
+    <input type="range" id="agents_base_speed" min="0" max="2" step="0.05">
+    <span class="val" data-for="agents_base_speed"></span>
+  </div>
+  <div class="row"><label>Audio speed</label>
+    <input type="range" id="agents_audio_speed" min="0" max="5" step="0.1">
+    <span class="val" data-for="agents_audio_speed"></span>
+  </div>
+  <h2>Boundary</h2>
+  <div class="seg" id="agents_boundary"></div>
+  <div class="row" style="margin-top: 0.6rem"><label>Flip threshold</label>
+    <input type="range" id="agents_flip_threshold" min="0" max="1" step="0.05">
+    <span class="val" data-for="agents_flip_threshold"></span>
+  </div>
+  <div class="row"><label>Flip probability</label>
+    <input type="range" id="agents_flip_probability" min="0" max="1" step="0.05">
+    <span class="val" data-for="agents_flip_probability"></span>
+  </div>
+</div>
+
+<script>
+let state = {};
+let posting = false;
+let pendingPatch = {};
+
+function fmtSlider(input) {
+  const step = input.step || "1";
+  const decimals = (step.includes(".") ? step.split(".")[1].length : 0);
+  return parseFloat(input.value).toFixed(decimals);
+}
+
+function rgbToHex(rgb) {
+  return "#" + rgb.map(c => c.toString(16).padStart(2, "0")).join("");
+}
+function hexToRgb(hex) {
+  return [hex.slice(1, 3), hex.slice(3, 5), hex.slice(5, 7)].map(s => parseInt(s, 16));
+}
+
+function buildSeg(containerId, options, capitalize = true) {
+  const c = document.getElementById(containerId);
+  c.innerHTML = "";
+  options.forEach(opt => {
+    const b = document.createElement("button");
+    b.dataset.v = opt;
+    b.textContent = capitalize ? opt.replace(/_/g, " ").replace(/\b\w/g, x => x.toUpperCase()) : opt;
+    b.addEventListener("click", () => send({ [containerId]: opt }));
+    c.appendChild(b);
+  });
+}
+
+function applyState() {
+  // Build segmented controls once based on enums returned by /state
+  if (state.modes && document.querySelectorAll("#mode button").length === 0)
+    buildSeg("mode", state.modes);
+  if (state.color_modes && document.querySelectorAll("#color_mode button").length === 0)
+    buildSeg("color_mode", state.color_modes);
+  if (state.boundaries && document.querySelectorAll("#agents_boundary button").length === 0)
+    buildSeg("agents_boundary", state.boundaries);
+
+  // Set active states on segmented controls
+  ["mode", "color_mode", "agents_boundary"].forEach(key => {
+    document.querySelectorAll(`#${key} button`).forEach(b => {
+      b.classList.toggle("active", b.dataset.v === state[key]);
+    });
+  });
+
+  // Palette dropdown
+  const sel = document.getElementById("palette");
+  if (sel.options.length === 0 && state.palettes) {
+    state.palettes.forEach(p => {
+      const o = document.createElement("option");
+      o.value = p; o.textContent = p;
+      sel.appendChild(o);
+    });
+  }
+  sel.value = state.palette;
+
+  // Color picker
+  if (Array.isArray(state.color)) {
+    document.getElementById("color").value = rgbToHex(state.color);
+  }
+
+  // Sliders — only update value display + position if not actively focused
+  document.querySelectorAll("input[type=range]").forEach(inp => {
+    if (state[inp.id] !== undefined && document.activeElement !== inp) {
+      inp.value = state[inp.id];
+    }
+    const valEl = document.querySelector(`[data-for="${inp.id}"]`);
+    if (valEl) valEl.textContent = fmtSlider(inp);
+  });
+
+  // Show/hide mode-specific sections
+  document.querySelectorAll(".mode-section").forEach(s => s.classList.add("hidden"));
+  const sec = document.getElementById("section-" + state.mode);
+  if (sec) sec.classList.remove("hidden");
+}
+
+async function send(patch) {
+  Object.assign(pendingPatch, patch);
+  if (posting) return;
+  posting = true;
+  while (Object.keys(pendingPatch).length) {
+    const body = pendingPatch;
+    pendingPatch = {};
+    try {
+      const r = await fetch("/state", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      state = await r.json();
+      applyState();
+    } catch (e) {
+      console.error(e);
+      break;
+    }
+  }
+  posting = false;
+}
+
+async function fetchState() {
+  const r = await fetch("/state");
+  state = await r.json();
+  applyState();
+}
+
+// Slider listeners (debounced) + live label update
+document.querySelectorAll("input[type=range]").forEach(inp => {
+  let timer = null;
+  inp.addEventListener("input", () => {
+    const valEl = document.querySelector(`[data-for="${inp.id}"]`);
+    if (valEl) valEl.textContent = fmtSlider(inp);
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      send({ [inp.id]: parseFloat(inp.value) });
+    }, 80);
+  });
+});
+
+// Palette dropdown
+document.getElementById("palette").addEventListener("change", e => {
+  send({ palette: e.target.value });
+});
+
+// Color picker
+document.getElementById("color").addEventListener("change", e => {
+  send({ color: hexToRgb(e.target.value) });
+});
+
+// Randomize button
+document.getElementById("randomize_now").addEventListener("click", async () => {
+  const r = await fetch("/randomize", { method: "POST" });
+  state = await r.json();
+  applyState();
+});
+
+fetchState();
+</script>
+</body>
+</html>
