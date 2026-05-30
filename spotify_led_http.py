@@ -13,10 +13,18 @@ from led_effects.cube import Cube, Radiate
 from web_ui import serve
 
 # Hardware / runtime constants — not editable from the UI
-WLED_IP = "192.168.0.194"   # mDNS: wled-0bec08.local
+WLED_IP = "192.168.0.195"   # mDNS: wled-0bec08.local
 WLED_PORT = 21324           # WLED realtime UDP (DNRGB)
 HTTP_PORT = 8080
-NUM_LEDS = 1092             # 4 lines x 273 LEDs
+
+# Reference LED counts: the cube is 4 lines x 273 = 1092; the column is one
+# logical array of 4800 (8 parallel strands of 600, addressed as a single
+# contiguous strip). Cube/radiate are locked to the cube geometry below;
+# linear effects (pulse/twinkle/agents) size themselves to the editable
+# "linear_leds" setting, so the strip length can be set to match whatever
+# hardware is attached.
+DEFAULT_LINEAR_LEDS = 1092
+MAX_LINEAR_LEDS = 10000
 
 # Physical LED arrangement. Sets which effects are available; the UI exposes a
 # shape selector so this can also be switched at runtime.
@@ -69,6 +77,7 @@ def _default_mode():
 settings = {
     "shape": SHAPE,
     "mode": _default_mode(),
+    "linear_leds": DEFAULT_LINEAR_LEDS,  # strip length for linear modes (editable)
     "color_mode": "palette_random",
     "palette": "purplesgreens",
     "color": [255, 255, 255],
@@ -97,6 +106,18 @@ base_pixels = None
 last_switch = 0.0
 
 
+def active_num_leds():
+    """Framebuffer length for the currently selected mode.
+
+    Cube/radiate are fixed to the physical cube geometry; every other (linear)
+    mode uses the user-editable linear_leds so the strip length can match the
+    attached hardware (e.g. 4800 for the column, 1092 for the cube).
+    """
+    if settings["mode"] in ("cube", "radiate"):
+        return CUBE_LINES * CUBE_LINE_LEDS
+    return int(settings["linear_leds"])
+
+
 def build_effect():
     """Construct a fresh effect instance from the current settings.
 
@@ -107,19 +128,20 @@ def build_effect():
     color = tuple(s["color"])
     cm = s["color_mode"]
     mode = s["mode"]
+    n = active_num_leds()
     if not mode:
         return None
     if mode == "pulse":
-        return Pulse(NUM_LEDS, color_mode=cm, color=color,
+        return Pulse(n, color_mode=cm, color=color,
                      attack=s["pulse_attack"], release=s["pulse_release"],
                      gamma=s["pulse_gamma"])
     if mode == "twinkle":
-        return Twinkle(NUM_LEDS, color_mode=cm, color=color,
+        return Twinkle(n, color_mode=cm, color=color,
                        fade=s["twinkle_fade"],
                        fade_jitter=s["twinkle_fade_jitter"],
                        density=s["twinkle_density"])
     if mode == "agents":
-        return Agents(NUM_LEDS, color_mode=cm, color=color,
+        return Agents(n, color_mode=cm, color=color,
                       count=int(s["agents_count"]), fade=s["agents_fade"],
                       base_speed=s["agents_base_speed"],
                       audio_speed=s["agents_audio_speed"],
@@ -127,13 +149,13 @@ def build_effect():
                       flip_threshold=s["agents_flip_threshold"],
                       flip_probability=s["agents_flip_probability"])
     if mode == "cube":
-        return Cube(NUM_LEDS, color_mode=cm, color=color,
+        return Cube(n, color_mode=cm, color=color,
                     lines=CUBE_LINES, leds_per_line=CUBE_LINE_LEDS,
                     bottom_leds=CUBE_BOTTOM_LEDS,
                     vertical_leds=CUBE_VERTICAL_LEDS,
                     top_leds=CUBE_TOP_LEDS)
     if mode == "radiate":
-        return Radiate(NUM_LEDS, color_mode=cm, color=color,
+        return Radiate(n, color_mode=cm, color=color,
                        lines=CUBE_LINES, leds_per_line=CUBE_LINE_LEDS,
                        bottom_leds=CUBE_BOTTOM_LEDS,
                        vertical_leds=CUBE_VERTICAL_LEDS,
@@ -141,25 +163,26 @@ def build_effect():
     raise ValueError(f"Unknown mode: {mode}")
 
 
-# Settings whose change requires rebuilding the effect (different class or
-# different agent population). Other tunables can be mutated live without
-# losing accumulated state (twinkle sparkles, agent positions, etc.). Shape
-# is intentionally not structural — switching shape doesn't change which mode
-# is active, so no effect rebuild is needed.
-STRUCTURAL_KEYS = {"mode", "color_mode", "agents_count"}
+# Settings whose change requires rebuilding the effect (different class,
+# different agent population, or a different LED count). Other tunables can be
+# mutated live without losing accumulated state (twinkle sparkles, agent
+# positions, etc.). Shape is structural because it can change which mode is
+# valid; linear_leds is structural because it resizes the framebuffer.
+STRUCTURAL_KEYS = {"shape", "mode", "color_mode", "agents_count", "linear_leds"}
 
 
 def apply_settings(changed_keys):
     """Propagate settings changes to the running effect. Caller must hold settings_lock."""
     global effect_fn, base_pixels
 
+    n = active_num_leds()
     if STRUCTURAL_KEYS & changed_keys:
         effect_fn = build_effect()
-        base_pixels = palette_gradient(settings["palette"], NUM_LEDS, loop=PALETTE_LOOP)
+        base_pixels = palette_gradient(settings["palette"], n, loop=PALETTE_LOOP)
         return
 
     if "palette" in changed_keys:
-        base_pixels = palette_gradient(settings["palette"], NUM_LEDS, loop=PALETTE_LOOP)
+        base_pixels = palette_gradient(settings["palette"], n, loop=PALETTE_LOOP)
 
     if effect_fn is None:
         return  # no live effect to tune
@@ -216,6 +239,13 @@ def validate_patch(patch):
         if key == "agents_boundary" and val not in VALID_BOUNDARIES:
             continue
         if key == "palette" and val not in PALETTES:
+            continue
+        if key == "linear_leds":
+            try:
+                val = max(1, min(MAX_LINEAR_LEDS, int(float(val))))
+            except (TypeError, ValueError):
+                continue
+            cleaned[key] = val
             continue
         if key == "color":
             try:
@@ -282,10 +312,11 @@ def audio_loop():
                           f"color_mode={settings['color_mode']} "
                           f"palette={settings['palette']} color={settings['color']}")
 
-                shift = int(shift_offset) % NUM_LEDS
+                n = len(base_pixels)
+                shift = int(shift_offset) % n
                 rotated = base_pixels[shift:] + base_pixels[:shift]
                 if effect_fn is None:
-                    pixels = [(0, 0, 0)] * NUM_LEDS
+                    pixels = [(0, 0, 0)] * n
                 else:
                     pixels = effect_fn(rotated, brightness)
 
@@ -345,7 +376,7 @@ def randomize_now():
 def main():
     global effect_fn, base_pixels
     effect_fn = build_effect()
-    base_pixels = palette_gradient(settings["palette"], NUM_LEDS, loop=PALETTE_LOOP)
+    base_pixels = palette_gradient(settings["palette"], active_num_leds(), loop=PALETTE_LOOP)
 
     threading.Thread(target=audio_loop, daemon=True).start()
 

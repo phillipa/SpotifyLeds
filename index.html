@@ -121,6 +121,18 @@ select {
   background-position: right 1rem center;
   padding-right: 2.5rem;
 }
+input[type=number] {
+  width: 6em;
+  background: #1c1c20;
+  color: #eaeaea;
+  border: 1px solid #333;
+  padding: 0.55rem 0.65rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-family: inherit;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 .color-row {
   display: flex;
   align-items: center;
@@ -151,6 +163,12 @@ select {
 
 <h2>Shape</h2>
 <div class="seg" id="shape"></div>
+
+<h2>Linear strip</h2>
+<div class="row">
+  <label for="linear_leds">LED count (linear modes)</label>
+  <input type="number" id="linear_leds" min="1" max="10000" step="1">
+</div>
 
 <h2>Mode</h2>
 <div id="mode-groups"></div>
@@ -342,6 +360,13 @@ function applyState() {
     if (valEl) valEl.textContent = fmtSlider(inp);
   });
 
+  // Number inputs — only update if not actively focused
+  document.querySelectorAll("input[type=number]").forEach(inp => {
+    if (state[inp.id] !== undefined && document.activeElement !== inp) {
+      inp.value = state[inp.id];
+    }
+  });
+
   // Show/hide mode-specific sections
   document.querySelectorAll(".mode-section").forEach(s => s.classList.add("hidden"));
   const sec = document.getElementById("section-" + state.mode);
@@ -387,6 +412,14 @@ document.querySelectorAll("input[type=range]").forEach(inp => {
     timer = setTimeout(() => {
       send({ [inp.id]: parseFloat(inp.value) });
     }, 80);
+  });
+});
+
+// Number inputs (commit on change/blur)
+document.querySelectorAll("input[type=number]").forEach(inp => {
+  inp.addEventListener("change", () => {
+    const v = parseInt(inp.value, 10);
+    if (!Number.isNaN(v)) send({ [inp.id]: v });
   });
 });
 
