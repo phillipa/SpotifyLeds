@@ -9,7 +9,7 @@ import os
 
 from led_effects import palette_gradient, dnrgb_packets, PALETTES
 from led_effects.linear import Pulse, Twinkle, Agents
-from led_effects.cube import Cube, Radiate
+from led_effects.cube import Cube
 from web_ui import serve
 
 # Hardware / runtime constants — not editable from the UI
@@ -17,10 +17,10 @@ WLED_IP = "192.168.0.194"   # mDNS: wled-0bec08.local
 WLED_PORT = 21324           # WLED realtime UDP (DNRGB)
 HTTP_PORT = 8080
 
-# Reference LED count: the cube is 4 lines x 273 = 1092. Cube/radiate are
-# locked to the cube geometry below; linear effects (pulse/twinkle/agents)
-# size themselves to the editable "linear_leds" setting so the strip length
-# can be set to match whatever hardware is attached.
+# Reference LED count: the cube is 4 lines x 273 = 1092. Cube is locked to the
+# cube geometry below; linear effects (pulse/twinkle/agents) size themselves to
+# the editable "linear_leds" setting so the strip length can be set to match
+# whatever hardware is attached.
 DEFAULT_LINEAR_LEDS = 1092
 MAX_LINEAR_LEDS = 10000
 
@@ -40,9 +40,9 @@ PEAK_DECAY = 0.999      # auto-gain decay rate
 
 INDEX_HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
 
-# Available effects, listed flat in the UI. Cube/radiate are designed for the
-# cube geometry, the rest for a generic linear strip, but all are selectable.
-MODES = ["pulse", "twinkle", "agents", "cube", "radiate"]
+# Available effects, listed flat in the UI. Cube is designed for the cube
+# geometry, the rest for a generic linear strip, but all are selectable.
+MODES = ["pulse", "twinkle", "agents", "cube"]
 VALID_COLOR_MODES = ["solid", "palette_linear", "palette_random"]
 VALID_BOUNDARIES = ["wrap", "bounce"]
 
@@ -71,8 +71,6 @@ settings = {
     "agents_boundary": "bounce",
     "agents_flip_threshold": 0.9,
     "agents_flip_probability": 0.5,
-
-    "radiate_corners": [True] * CUBE_LINES,  # which top corners radiate
 }
 
 settings_lock = threading.Lock()
@@ -84,11 +82,11 @@ last_switch = 0.0
 def active_num_leds():
     """Framebuffer length for the currently selected mode.
 
-    Cube/radiate are fixed to the physical cube geometry; every other (linear)
-    mode uses the user-editable linear_leds so the strip length can match the
+    Cube is fixed to the physical cube geometry; every other (linear) mode
+    uses the user-editable linear_leds so the strip length can match the
     attached hardware.
     """
-    if settings["mode"] in ("cube", "radiate"):
+    if settings["mode"] == "cube":
         return CUBE_LINES * CUBE_LINE_LEDS
     return int(settings["linear_leds"])
 
@@ -129,13 +127,6 @@ def build_effect():
                     bottom_leds=CUBE_BOTTOM_LEDS,
                     vertical_leds=CUBE_VERTICAL_LEDS,
                     top_leds=CUBE_TOP_LEDS)
-    if mode == "radiate":
-        return Radiate(n, color_mode=cm, color=color,
-                       lines=CUBE_LINES, leds_per_line=CUBE_LINE_LEDS,
-                       bottom_leds=CUBE_BOTTOM_LEDS,
-                       vertical_leds=CUBE_VERTICAL_LEDS,
-                       top_leds=CUBE_TOP_LEDS,
-                       corners=s["radiate_corners"])
     raise ValueError(f"Unknown mode: {mode}")
 
 
@@ -183,8 +174,6 @@ def apply_settings(changed_keys):
         if "agents_boundary" in changed_keys:         effect_fn.boundary = s["agents_boundary"]
         if "agents_flip_threshold" in changed_keys:  effect_fn.flip_threshold = s["agents_flip_threshold"]
         if "agents_flip_probability" in changed_keys: effect_fn.flip_probability = s["agents_flip_probability"]
-    elif m == "radiate":
-        if "radiate_corners" in changed_keys: effect_fn.corners = list(s["radiate_corners"])
 
 
 def random_pick():
@@ -218,13 +207,6 @@ def validate_patch(patch):
                 val = max(1, min(MAX_LINEAR_LEDS, int(float(val))))
             except (TypeError, ValueError):
                 continue
-            cleaned[key] = val
-            continue
-        if key == "radiate_corners":
-            if not isinstance(val, list):
-                continue
-            val = [bool(x) for x in val[:CUBE_LINES]]
-            val += [False] * (CUBE_LINES - len(val))
             cleaned[key] = val
             continue
         if key == "color":

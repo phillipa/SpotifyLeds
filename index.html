@@ -244,11 +244,6 @@ input[type=number] {
   </div>
 </div>
 
-<div id="section-radiate" class="mode-section hidden">
-  <h2>Radiate corners</h2>
-  <div class="seg" id="radiate_corners"></div>
-</div>
-
 <script>
 let state = {};
 let posting = false;
@@ -279,24 +274,6 @@ function buildSeg(containerId, options, capitalize = true) {
   });
 }
 
-// Multi-toggle of booleans (e.g. radiate_corners). Clicking flips one entry
-// and posts the whole updated array.
-function buildToggles(containerId, count) {
-  const c = document.getElementById(containerId);
-  c.innerHTML = "";
-  for (let i = 0; i < count; i++) {
-    const b = document.createElement("button");
-    b.dataset.i = i;
-    b.textContent = "Corner " + (i + 1);
-    b.addEventListener("click", () => {
-      const cur = (state[containerId] || []).slice();
-      cur[i] = !cur[i];
-      send({ [containerId]: cur });
-    });
-    c.appendChild(b);
-  }
-}
-
 function applyState() {
   // Build segmented controls once based on enums returned by /state
   if (state.modes && document.querySelectorAll("#mode button").length === 0)
@@ -312,16 +289,6 @@ function applyState() {
       b.classList.toggle("active", b.dataset.v === state[key]);
     });
   });
-
-  // Radiate corner toggles: rebuild if the count changed, then mark active.
-  if (Array.isArray(state.radiate_corners)) {
-    const c = document.getElementById("radiate_corners");
-    if (c.children.length !== state.radiate_corners.length)
-      buildToggles("radiate_corners", state.radiate_corners.length);
-    c.querySelectorAll("button").forEach(b => {
-      b.classList.toggle("active", !!state.radiate_corners[b.dataset.i]);
-    });
-  }
 
   // Palette dropdown
   const sel = document.getElementById("palette");

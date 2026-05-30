@@ -6,7 +6,7 @@ Public surface:
 
 Effect classes live in shape-specific submodules:
     led_effects.linear   -- generic strip effects (Pulse, Twinkle, Agents)
-    led_effects.cube     -- 4-line cube effects (Cube, Radiate)
+    led_effects.cube     -- 4-line cube effects (Cube)
     led_effects.column   -- column-arrangement effects (none yet)
 """
 
