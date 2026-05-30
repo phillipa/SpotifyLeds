@@ -38,8 +38,11 @@ PEAK_DECAY = 0.999      # auto-gain decay rate
 
 INDEX_HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
 
-# Modes available for each LED arrangement. Adding a new shape-specific effect
-# only requires importing it and listing its name here under the right shape.
+# Modes grouped by the LED arrangement they're designed for. The grouping is
+# surfaced as labels in the UI so users can tell which mode targets which
+# hardware, but every mode is always selectable regardless of the chosen
+# shape — users can run "cube" on the linear strip, "pulse" on the column,
+# etc., to see what happens.
 SHAPES = ["linear", "cube", "column"]
 MODES_BY_SHAPE = {
     "linear": ["pulse", "twinkle", "agents"],
@@ -50,13 +53,22 @@ VALID_COLOR_MODES = ["solid", "palette_linear", "palette_random"]
 VALID_BOUNDARIES = ["wrap", "bounce"]
 
 
-def valid_modes():
-    return MODES_BY_SHAPE.get(settings["shape"], [])
+def all_modes():
+    return [m for ms in MODES_BY_SHAPE.values() for m in ms]
+
+
+def _default_mode():
+    own = MODES_BY_SHAPE.get(SHAPE) or []
+    if own:
+        return own[0]
+    modes = all_modes()
+    return modes[0] if modes else ""
+
 
 # All UI-editable settings live here. Audio loop reads, HTTP handler writes.
 settings = {
     "shape": SHAPE,
-    "mode": MODES_BY_SHAPE[SHAPE][0] if MODES_BY_SHAPE[SHAPE] else "",
+    "mode": _default_mode(),
     "color_mode": "palette_random",
     "palette": "purplesgreens",
     "color": [255, 255, 255],
@@ -131,20 +143,15 @@ def build_effect():
 
 # Settings whose change requires rebuilding the effect (different class or
 # different agent population). Other tunables can be mutated live without
-# losing accumulated state (twinkle sparkles, agent positions, etc.).
-STRUCTURAL_KEYS = {"shape", "mode", "color_mode", "agents_count"}
+# losing accumulated state (twinkle sparkles, agent positions, etc.). Shape
+# is intentionally not structural — switching shape doesn't change which mode
+# is active, so no effect rebuild is needed.
+STRUCTURAL_KEYS = {"mode", "color_mode", "agents_count"}
 
 
 def apply_settings(changed_keys):
     """Propagate settings changes to the running effect. Caller must hold settings_lock."""
     global effect_fn, base_pixels
-
-    # If shape changed and the current mode isn't valid for the new shape,
-    # auto-switch to the first available mode (or "" if there are none).
-    if "shape" in changed_keys:
-        modes = valid_modes()
-        if settings["mode"] not in modes:
-            settings["mode"] = modes[0] if modes else ""
 
     if STRUCTURAL_KEYS & changed_keys:
         effect_fn = build_effect()
@@ -181,7 +188,7 @@ def apply_settings(changed_keys):
 
 def random_pick():
     r, g, b = colorsys.hsv_to_rgb(random.random(), 1.0, 1.0)
-    modes = valid_modes()
+    modes = all_modes()
     pick = {
         "color_mode": random.choice(VALID_COLOR_MODES),
         "palette": random.choice(list(PALETTES.keys())),
@@ -202,7 +209,7 @@ def validate_patch(patch):
             continue
         if key == "shape" and val not in SHAPES:
             continue
-        if key == "mode" and val not in valid_modes():
+        if key == "mode" and val not in all_modes():
             continue
         if key == "color_mode" and val not in VALID_COLOR_MODES:
             continue
@@ -299,7 +306,7 @@ def state_payload():
         **settings,
         "palettes": list(PALETTES.keys()),
         "shapes": SHAPES,
-        "modes": valid_modes(),
+        "modes_by_shape": MODES_BY_SHAPE,
         "color_modes": VALID_COLOR_MODES,
         "boundaries": VALID_BOUNDARIES,
     }

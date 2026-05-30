@@ -33,7 +33,7 @@ SHAPE = "cube"              # "linear" | "cube" | "column" — picks the availab
 COLOR_ORDER = "RGB"         # try "GRB" if colors look swapped
 ```
 
-`SHAPE` is the default; the web UI also exposes a Shape selector so it can be switched at runtime (handy when the same Mac drives different physical setups). Each shape exposes a different mode list:
+`SHAPE` is the default hardware label; the web UI also exposes a Shape selector so it can be switched at runtime. Modes are grouped under their designed-for shape in the UI, but **every mode is always selectable** regardless of which shape is set — useful for experimenting with how, say, the cube effect looks on the column.
 
 - `linear` — Pulse, Twinkle, Agents (geometry-agnostic)
 - `cube` — Cube, Radiate (4-line cube layout; see `CUBE_*` constants for per-face LED counts)
