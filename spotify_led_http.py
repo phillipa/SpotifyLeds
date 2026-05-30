@@ -7,14 +7,23 @@ import colorsys
 import threading
 import os
 
-from led_effects import palette_gradient, dnrgb_packets, Pulse, Progressive, Twinkle, Agents, PALETTES
+from led_effects import palette_gradient, dnrgb_packets, Pulse, Progressive, Twinkle, Agents, Cube, PALETTES
 from web_ui import serve
 
 # Hardware / runtime constants — not editable from the UI
 WLED_IP = "192.168.0.194"   # mDNS: wled-0bec08.local
 WLED_PORT = 21324           # WLED realtime UDP (DNRGB)
 HTTP_PORT = 8080
-NUM_LEDS = 1092             # 4 segments x 273 LEDs
+NUM_LEDS = 1092             # 4 lines x 273 LEDs
+
+# Cube geometry: each line is routed bottom -> vertical -> top.
+# Defaults assume equal thirds (273 / 3 = 91); adjust if the physical split differs.
+CUBE_LINES = 4
+CUBE_LINE_LEDS = 273
+CUBE_BOTTOM_LEDS = 91
+CUBE_VERTICAL_LEDS = 91
+CUBE_TOP_LEDS = 91
+
 COLOR_ORDER = "RGB"
 
 PALETTE_SHIFT = 0.5     # LEDs to scroll the palette per frame
@@ -22,7 +31,7 @@ PALETTE_LOOP = True     # blend the last LED back to the first so scrolling is s
 PEAK_DECAY = 0.999      # auto-gain decay rate
 
 INDEX_HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
-VALID_MODES = ["pulse", "progressive", "twinkle", "agents"]
+VALID_MODES = ["pulse", "progressive", "twinkle", "agents", "cube"]
 VALID_COLOR_MODES = ["solid", "palette_linear", "palette_random"]
 VALID_BOUNDARIES = ["wrap", "bounce"]
 
@@ -82,6 +91,12 @@ def build_effect():
                       boundary=s["agents_boundary"],
                       flip_threshold=s["agents_flip_threshold"],
                       flip_probability=s["agents_flip_probability"])
+    if mode == "cube":
+        return Cube(NUM_LEDS, color_mode=cm, color=color,
+                    lines=CUBE_LINES, leds_per_line=CUBE_LINE_LEDS,
+                    bottom_leds=CUBE_BOTTOM_LEDS,
+                    vertical_leds=CUBE_VERTICAL_LEDS,
+                    top_leds=CUBE_TOP_LEDS)
     raise ValueError(f"Unknown mode: {mode}")
 
 
