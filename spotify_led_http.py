@@ -9,7 +9,7 @@ import os
 
 from led_effects import palette_gradient, dnrgb_packets, PALETTES
 from led_effects.linear import Pulse, Twinkle, Agents
-from led_effects.cube import Cube
+from led_effects.cube import Cube, RisingEmbers, Spectrum
 from web_ui import serve
 
 # Hardware / runtime constants — not editable from the UI
@@ -38,11 +38,24 @@ PALETTE_SHIFT = 0.5     # LEDs to scroll the palette per frame
 PALETTE_LOOP = True     # blend the last LED back to the first so scrolling is seamless
 PEAK_DECAY = 0.999      # auto-gain decay rate
 
+# Audio capture / FFT. The realtime spectrum (for the Spectrum effect) is
+# computed once per frame and handed to the effect as per-band energies.
+SAMPLE_RATE = 44100
+FRAMES_PER_BUFFER = 1024
+AUDIO_BANDS = 32        # frequency bands mapped onto the cube's height axis
+BAND_FMIN = 40          # Hz, lowest band edge
+BAND_FMAX = 16000       # Hz, highest band edge
+BAND_DECAY = 0.999      # spectrum auto-gain decay rate
+
+# Cube-geometry effects size themselves to the physical cube, not linear_leds.
+CUBE_MODES = ("cube", "embers", "spectrum")
+
 INDEX_HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
 
-# Available effects, listed flat in the UI. Cube is designed for the cube
-# geometry, the rest for a generic linear strip, but all are selectable.
-MODES = ["pulse", "twinkle", "agents", "cube"]
+# Available effects, listed flat in the UI. Cube/embers/spectrum are designed
+# for the cube geometry, the rest for a generic linear strip, but all are
+# selectable.
+MODES = ["pulse", "twinkle", "agents", "cube", "embers", "spectrum"]
 VALID_COLOR_MODES = ["solid", "palette_linear", "palette_random"]
 VALID_BOUNDARIES = ["wrap", "bounce"]
 
@@ -71,6 +84,13 @@ settings = {
     "agents_boundary": "bounce",
     "agents_flip_threshold": 0.9,
     "agents_flip_probability": 0.5,
+
+    "embers_fade": 0.85,
+    "embers_spawn": 0.6,
+    "embers_base_speed": 0.5,
+    "embers_audio_speed": 3.0,
+
+    "spectrum_gamma": 1.5,
 }
 
 settings_lock = threading.Lock()
@@ -82,11 +102,11 @@ last_switch = 0.0
 def active_num_leds():
     """Framebuffer length for the currently selected mode.
 
-    Cube is fixed to the physical cube geometry; every other (linear) mode
-    uses the user-editable linear_leds so the strip length can match the
+    Cube-geometry effects are fixed to the physical cube; every other (linear)
+    mode uses the user-editable linear_leds so the strip length can match the
     attached hardware.
     """
-    if settings["mode"] == "cube":
+    if settings["mode"] in CUBE_MODES:
         return CUBE_LINES * CUBE_LINE_LEDS
     return int(settings["linear_leds"])
 
@@ -127,6 +147,21 @@ def build_effect():
                     bottom_leds=CUBE_BOTTOM_LEDS,
                     vertical_leds=CUBE_VERTICAL_LEDS,
                     top_leds=CUBE_TOP_LEDS)
+    if mode == "embers":
+        return RisingEmbers(n, color_mode=cm, color=color,
+                            lines=CUBE_LINES, leds_per_line=CUBE_LINE_LEDS,
+                            bottom_leds=CUBE_BOTTOM_LEDS,
+                            vertical_leds=CUBE_VERTICAL_LEDS,
+                            top_leds=CUBE_TOP_LEDS,
+                            fade=s["embers_fade"], spawn_rate=s["embers_spawn"],
+                            base_speed=s["embers_base_speed"],
+                            audio_speed=s["embers_audio_speed"])
+    if mode == "spectrum":
+        return Spectrum(n, color_mode=cm, color=color,
+                        lines=CUBE_LINES, leds_per_line=CUBE_LINE_LEDS,
+                        bottom_leds=CUBE_BOTTOM_LEDS,
+                        vertical_leds=CUBE_VERTICAL_LEDS,
+                        top_leds=CUBE_TOP_LEDS, gamma=s["spectrum_gamma"])
     raise ValueError(f"Unknown mode: {mode}")
 
 
@@ -174,6 +209,13 @@ def apply_settings(changed_keys):
         if "agents_boundary" in changed_keys:         effect_fn.boundary = s["agents_boundary"]
         if "agents_flip_threshold" in changed_keys:  effect_fn.flip_threshold = s["agents_flip_threshold"]
         if "agents_flip_probability" in changed_keys: effect_fn.flip_probability = s["agents_flip_probability"]
+    elif m == "embers":
+        if "embers_fade" in changed_keys:        effect_fn.fade = s["embers_fade"]
+        if "embers_spawn" in changed_keys:       effect_fn.spawn_rate = s["embers_spawn"]
+        if "embers_base_speed" in changed_keys:  effect_fn.base_speed = s["embers_base_speed"]
+        if "embers_audio_speed" in changed_keys: effect_fn.audio_speed = s["embers_audio_speed"]
+    elif m == "spectrum":
+        if "spectrum_gamma" in changed_keys: effect_fn.gamma = s["spectrum_gamma"]
 
 
 def random_pick():
@@ -236,6 +278,13 @@ def find_blackhole():
     return None, -1
 
 
+def band_bin_edges():
+    """rfft bin-index edges for AUDIO_BANDS log-spaced bands (length BANDS+1)."""
+    edges = np.logspace(np.log10(BAND_FMIN), np.log10(BAND_FMAX), AUDIO_BANDS + 1)
+    bins = (edges * FRAMES_PER_BUFFER / SAMPLE_RATE).astype(int)
+    return np.clip(bins, 1, FRAMES_PER_BUFFER // 2)
+
+
 def audio_loop():
     global last_switch
 
@@ -245,24 +294,43 @@ def audio_loop():
         os._exit(1)
     print(f"Using audio device index {idx}: BlackHole")
 
-    stream = p.open(format=pyaudio.paFloat32, channels=2, rate=44100, input=True,
-                    input_device_index=idx, frames_per_buffer=1024)
+    stream = p.open(format=pyaudio.paFloat32, channels=2, rate=SAMPLE_RATE, input=True,
+                    input_device_index=idx, frames_per_buffer=FRAMES_PER_BUFFER)
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    window = np.hanning(FRAMES_PER_BUFFER)
+    band_edges = band_bin_edges()
 
     shift_offset = 0.0
     peak_rms = 1e-6
+    peak_spec = 1e-6
     last_switch = time.time()
 
     try:
         while True:
-            data = np.frombuffer(stream.read(1024, exception_on_overflow=False), dtype=np.float32)
+            data = np.frombuffer(stream.read(FRAMES_PER_BUFFER, exception_on_overflow=False), dtype=np.float32)
 
             if len(data) == 0:
                 brightness = 0
+                bands = [0.0] * AUDIO_BANDS
             else:
                 rms = float(np.sqrt(np.mean(data**2)))
                 peak_rms = max(rms, peak_rms * PEAK_DECAY)
                 brightness = int(np.clip(rms / peak_rms * 255, 0, 255))
+
+                # Per-band spectrum (mono mix) for the Spectrum effect, auto-gained
+                # against a decaying peak so it stays responsive across volumes.
+                mono = data.reshape(-1, 2).mean(axis=1)[:FRAMES_PER_BUFFER]
+                if mono.size == FRAMES_PER_BUFFER:
+                    mag = np.abs(np.fft.rfft(mono * window))
+                    energy = np.array([
+                        mag[band_edges[b]:max(band_edges[b] + 1, band_edges[b + 1])].mean()
+                        for b in range(AUDIO_BANDS)
+                    ])
+                    peak_spec = max(float(energy.max()), peak_spec * BAND_DECAY)
+                    bands = np.clip(energy / peak_spec, 0.0, 1.0).tolist()
+                else:
+                    bands = [0.0] * AUDIO_BANDS
 
             with settings_lock:
                 interval = settings["randomize_interval"]
@@ -280,7 +348,7 @@ def audio_loop():
                 if effect_fn is None:
                     pixels = [(0, 0, 0)] * n
                 else:
-                    pixels = effect_fn(rotated, brightness)
+                    pixels = effect_fn(rotated, brightness, bands)
 
             for packet in dnrgb_packets(pixels, COLOR_ORDER):
                 sock.sendto(packet, (WLED_IP, WLED_PORT))

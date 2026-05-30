@@ -29,7 +29,7 @@ class Pulse(_ColoredEffect):
         self.gamma = gamma
         self.level = 0.0
 
-    def __call__(self, pixels, brightness):
+    def __call__(self, pixels, brightness, bands=None):
         if brightness > self.level:
             self.level += (brightness - self.level) * self.attack
         else:
@@ -69,7 +69,7 @@ class Twinkle:
         self.state = [(0, 0, 0)] * num_leds
         self.fades = [fade] * num_leds
 
-    def __call__(self, pixels, brightness):
+    def __call__(self, pixels, brightness, bands=None):
         self.state = [
             (int(r * f), int(g * f), int(b * f))
             for (r, g, b), f in zip(self.state, self.fades)
@@ -146,7 +146,7 @@ class Agents:
             for _ in range(count)
         ]
 
-    def __call__(self, pixels, brightness):
+    def __call__(self, pixels, brightness, bands=None):
         speed = self.base_speed + self.audio_speed * (brightness / 255.0)
         max_pos = self.num_leds - 1
 
