@@ -66,9 +66,10 @@ The audio loop and HTTP handler share `settings` under a lock; structural change
 | Mode | Behavior |
 | --- | --- |
 | `pulse` | Every LED flashes at its assigned color, scaled by an audio envelope with attack/release/gamma. |
-| `progressive` | LEDs light left-to-right; the lit count tracks the audio level. |
 | `twinkle` | Random LEDs sparkle on and fade out. Density scales with audio. |
 | `agents` | Moving pixels with fading tails; speed reacts to audio, optional rising-edge direction flips on peaks. |
+| `cube` | Cube layout: bottom face always lit; the four vertical columns rise together to a height tracking audio. Top face dark. |
+| `radiate` | Cube layout: fills from each line's vertical-to-top corner — down the vertical and outward along the top — both at the same fractional level. Bottom face dark. |
 
 Color modes apply to all effects:
 

@@ -134,14 +134,6 @@ class Pulse(_ColoredEffect):
         ]
 
 
-class Progressive(_ColoredEffect):
-    """Light LEDs left-to-right; the lit count scales with the audio level."""
-    def __call__(self, pixels, brightness):
-        colors = self._resolve_colors(pixels)
-        lit = int(round((brightness / 255.0) * self.num_leds))
-        return list(colors[:lit]) + [(0, 0, 0)] * (self.num_leds - lit)
-
-
 class Radiate(_ColoredEffect):
     """Progressive variant radiating from each line's top corner.
 

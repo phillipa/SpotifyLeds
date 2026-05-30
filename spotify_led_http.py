@@ -7,7 +7,7 @@ import colorsys
 import threading
 import os
 
-from led_effects import palette_gradient, dnrgb_packets, Pulse, Progressive, Twinkle, Agents, Cube, Radiate, PALETTES
+from led_effects import palette_gradient, dnrgb_packets, Pulse, Twinkle, Agents, Cube, Radiate, PALETTES
 from web_ui import serve
 
 # Hardware / runtime constants — not editable from the UI
@@ -31,7 +31,7 @@ PALETTE_LOOP = True     # blend the last LED back to the first so scrolling is s
 PEAK_DECAY = 0.999      # auto-gain decay rate
 
 INDEX_HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
-VALID_MODES = ["pulse", "progressive", "twinkle", "agents", "cube", "radiate"]
+VALID_MODES = ["pulse", "twinkle", "agents", "cube", "radiate"]
 VALID_COLOR_MODES = ["solid", "palette_linear", "palette_random"]
 VALID_BOUNDARIES = ["wrap", "bounce"]
 
@@ -76,8 +76,6 @@ def build_effect():
         return Pulse(NUM_LEDS, color_mode=cm, color=color,
                      attack=s["pulse_attack"], release=s["pulse_release"],
                      gamma=s["pulse_gamma"])
-    if mode == "progressive":
-        return Progressive(NUM_LEDS, color_mode=cm, color=color)
     if mode == "twinkle":
         return Twinkle(NUM_LEDS, color_mode=cm, color=color,
                        fade=s["twinkle_fade"],
