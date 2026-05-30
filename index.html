@@ -69,13 +69,6 @@ h2 {
   color: #0a0a0a;
   font-weight: 600;
 }
-.mode-group-label {
-  font-size: 0.6rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  opacity: 0.45;
-  margin: 0.6rem 0 0.25rem 0.2rem;
-}
 input[type=range] {
   flex: 2;
   -webkit-appearance: none;
@@ -161,9 +154,6 @@ input[type=number] {
 
 <h1>LED Control</h1>
 
-<h2>Shape</h2>
-<div class="seg" id="shape"></div>
-
 <h2>Linear strip</h2>
 <div class="row">
   <label for="linear_leds">LED count (linear modes)</label>
@@ -171,7 +161,7 @@ input[type=number] {
 </div>
 
 <h2>Mode</h2>
-<div id="mode-groups"></div>
+<div class="seg" id="mode"></div>
 
 <h2>Color Source</h2>
 <div class="seg" id="color_mode"></div>
@@ -258,7 +248,6 @@ input[type=number] {
 let state = {};
 let posting = false;
 let pendingPatch = {};
-let renderedModeGroups = "";  // JSON of modes_by_shape last rendered, rebuilt when the registry changes
 
 function fmtSlider(input) {
   const step = input.step || "1";
@@ -285,54 +274,20 @@ function buildSeg(containerId, options, capitalize = true) {
   });
 }
 
-function buildModeGroups(modesByShape) {
-  const container = document.getElementById("mode-groups");
-  container.innerHTML = "";
-  Object.entries(modesByShape).forEach(([shape, modes]) => {
-    if (!modes.length) return;
-    const label = document.createElement("div");
-    label.className = "mode-group-label";
-    label.textContent = shape;
-    container.appendChild(label);
-    const seg = document.createElement("div");
-    seg.className = "seg mode-group";
-    modes.forEach(m => {
-      const b = document.createElement("button");
-      b.dataset.v = m;
-      b.textContent = m.replace(/_/g, " ").replace(/\b\w/g, x => x.toUpperCase());
-      b.addEventListener("click", () => send({ mode: m }));
-      seg.appendChild(b);
-    });
-    container.appendChild(seg);
-  });
-}
-
 function applyState() {
   // Build segmented controls once based on enums returned by /state
-  if (state.shapes && document.querySelectorAll("#shape button").length === 0)
-    buildSeg("shape", state.shapes);
+  if (state.modes && document.querySelectorAll("#mode button").length === 0)
+    buildSeg("mode", state.modes);
   if (state.color_modes && document.querySelectorAll("#color_mode button").length === 0)
     buildSeg("color_mode", state.color_modes);
   if (state.boundaries && document.querySelectorAll("#agents_boundary button").length === 0)
     buildSeg("agents_boundary", state.boundaries);
 
-  // Mode groups: rebuild when the registry differs from last render.
-  if (state.modes_by_shape) {
-    const key = JSON.stringify(state.modes_by_shape);
-    if (key !== renderedModeGroups) {
-      buildModeGroups(state.modes_by_shape);
-      renderedModeGroups = key;
-    }
-  }
-
-  // Set active states on segmented controls + grouped mode buttons
-  ["shape", "color_mode", "agents_boundary"].forEach(key => {
+  // Set active states on segmented controls
+  ["mode", "color_mode", "agents_boundary"].forEach(key => {
     document.querySelectorAll(`#${key} button`).forEach(b => {
       b.classList.toggle("active", b.dataset.v === state[key]);
     });
-  });
-  document.querySelectorAll(".mode-group button").forEach(b => {
-    b.classList.toggle("active", b.dataset.v === state.mode);
   });
 
   // Palette dropdown

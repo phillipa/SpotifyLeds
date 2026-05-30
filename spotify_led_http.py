@@ -17,18 +17,12 @@ WLED_IP = "192.168.0.195"   # mDNS: wled-0bec08.local
 WLED_PORT = 21324           # WLED realtime UDP (DNRGB)
 HTTP_PORT = 8080
 
-# Reference LED counts: the cube is 4 lines x 273 = 1092; the column is one
-# logical array of 4800 (8 parallel strands of 600, addressed as a single
-# contiguous strip). Cube/radiate are locked to the cube geometry below;
-# linear effects (pulse/twinkle/agents) size themselves to the editable
-# "linear_leds" setting, so the strip length can be set to match whatever
-# hardware is attached.
+# Reference LED count: the cube is 4 lines x 273 = 1092. Cube/radiate are
+# locked to the cube geometry below; linear effects (pulse/twinkle/agents)
+# size themselves to the editable "linear_leds" setting so the strip length
+# can be set to match whatever hardware is attached.
 DEFAULT_LINEAR_LEDS = 1092
 MAX_LINEAR_LEDS = 10000
-
-# Physical LED arrangement. Sets which effects are available; the UI exposes a
-# shape selector so this can also be switched at runtime.
-SHAPE = "cube"
 
 # Cube geometry: each line is routed bottom -> vertical -> top.
 # Defaults assume equal thirds (273 / 3 = 91); adjust if the physical split differs.
@@ -46,37 +40,16 @@ PEAK_DECAY = 0.999      # auto-gain decay rate
 
 INDEX_HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
 
-# Modes grouped by the LED arrangement they're designed for. The grouping is
-# surfaced as labels in the UI so users can tell which mode targets which
-# hardware, but every mode is always selectable regardless of the chosen
-# shape — users can run "cube" on the linear strip, "pulse" on the column,
-# etc., to see what happens.
-SHAPES = ["linear", "cube", "column"]
-MODES_BY_SHAPE = {
-    "linear": ["pulse", "twinkle", "agents"],
-    "cube":   ["cube", "radiate"],
-    "column": [],
-}
+# Available effects, listed flat in the UI. Cube/radiate are designed for the
+# cube geometry, the rest for a generic linear strip, but all are selectable.
+MODES = ["pulse", "twinkle", "agents", "cube", "radiate"]
 VALID_COLOR_MODES = ["solid", "palette_linear", "palette_random"]
 VALID_BOUNDARIES = ["wrap", "bounce"]
 
 
-def all_modes():
-    return [m for ms in MODES_BY_SHAPE.values() for m in ms]
-
-
-def _default_mode():
-    own = MODES_BY_SHAPE.get(SHAPE) or []
-    if own:
-        return own[0]
-    modes = all_modes()
-    return modes[0] if modes else ""
-
-
 # All UI-editable settings live here. Audio loop reads, HTTP handler writes.
 settings = {
-    "shape": SHAPE,
-    "mode": _default_mode(),
+    "mode": MODES[0],
     "linear_leds": DEFAULT_LINEAR_LEDS,  # strip length for linear modes (editable)
     "color_mode": "palette_random",
     "palette": "purplesgreens",
@@ -111,7 +84,7 @@ def active_num_leds():
 
     Cube/radiate are fixed to the physical cube geometry; every other (linear)
     mode uses the user-editable linear_leds so the strip length can match the
-    attached hardware (e.g. 4800 for the column, 1092 for the cube).
+    attached hardware.
     """
     if settings["mode"] in ("cube", "radiate"):
         return CUBE_LINES * CUBE_LINE_LEDS
@@ -121,8 +94,8 @@ def active_num_leds():
 def build_effect():
     """Construct a fresh effect instance from the current settings.
 
-    Returns None when the current shape has no modes available — the audio
-    loop renders an all-dark frame in that case.
+    Returns None when no mode is selected — the audio loop renders an
+    all-dark frame in that case.
     """
     s = settings
     color = tuple(s["color"])
@@ -166,9 +139,9 @@ def build_effect():
 # Settings whose change requires rebuilding the effect (different class,
 # different agent population, or a different LED count). Other tunables can be
 # mutated live without losing accumulated state (twinkle sparkles, agent
-# positions, etc.). Shape is structural because it can change which mode is
-# valid; linear_leds is structural because it resizes the framebuffer.
-STRUCTURAL_KEYS = {"shape", "mode", "color_mode", "agents_count", "linear_leds"}
+# positions, etc.). linear_leds is structural because it resizes the
+# framebuffer.
+STRUCTURAL_KEYS = {"mode", "color_mode", "agents_count", "linear_leds"}
 
 
 def apply_settings(changed_keys):
@@ -211,15 +184,12 @@ def apply_settings(changed_keys):
 
 def random_pick():
     r, g, b = colorsys.hsv_to_rgb(random.random(), 1.0, 1.0)
-    modes = all_modes()
-    pick = {
+    return {
+        "mode": random.choice(MODES),
         "color_mode": random.choice(VALID_COLOR_MODES),
         "palette": random.choice(list(PALETTES.keys())),
         "color": [int(r * 255), int(g * 255), int(b * 255)],
     }
-    if modes:
-        pick["mode"] = random.choice(modes)
-    return pick
 
 
 def validate_patch(patch):
@@ -230,9 +200,7 @@ def validate_patch(patch):
     for key, val in patch.items():
         if key not in settings:
             continue
-        if key == "shape" and val not in SHAPES:
-            continue
-        if key == "mode" and val not in all_modes():
+        if key == "mode" and val not in MODES:
             continue
         if key == "color_mode" and val not in VALID_COLOR_MODES:
             continue
@@ -336,8 +304,7 @@ def state_payload():
     return {
         **settings,
         "palettes": list(PALETTES.keys()),
-        "shapes": SHAPES,
-        "modes_by_shape": MODES_BY_SHAPE,
+        "modes": MODES,
         "color_modes": VALID_COLOR_MODES,
         "boundaries": VALID_BOUNDARIES,
     }
