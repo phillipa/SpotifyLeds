@@ -13,7 +13,7 @@ from led_effects.cube import Cube, Radiate
 from web_ui import serve
 
 # Hardware / runtime constants — not editable from the UI
-WLED_IP = "192.168.0.195"   # mDNS: wled-0bec08.local
+WLED_IP = "192.168.0.194"   # mDNS: wled-0bec08.local
 WLED_PORT = 21324           # WLED realtime UDP (DNRGB)
 HTTP_PORT = 8080
 
@@ -71,6 +71,8 @@ settings = {
     "agents_boundary": "bounce",
     "agents_flip_threshold": 0.9,
     "agents_flip_probability": 0.5,
+
+    "radiate_corners": [True] * CUBE_LINES,  # which top corners radiate
 }
 
 settings_lock = threading.Lock()
@@ -132,7 +134,8 @@ def build_effect():
                        lines=CUBE_LINES, leds_per_line=CUBE_LINE_LEDS,
                        bottom_leds=CUBE_BOTTOM_LEDS,
                        vertical_leds=CUBE_VERTICAL_LEDS,
-                       top_leds=CUBE_TOP_LEDS)
+                       top_leds=CUBE_TOP_LEDS,
+                       corners=s["radiate_corners"])
     raise ValueError(f"Unknown mode: {mode}")
 
 
@@ -180,6 +183,8 @@ def apply_settings(changed_keys):
         if "agents_boundary" in changed_keys:         effect_fn.boundary = s["agents_boundary"]
         if "agents_flip_threshold" in changed_keys:  effect_fn.flip_threshold = s["agents_flip_threshold"]
         if "agents_flip_probability" in changed_keys: effect_fn.flip_probability = s["agents_flip_probability"]
+    elif m == "radiate":
+        if "radiate_corners" in changed_keys: effect_fn.corners = list(s["radiate_corners"])
 
 
 def random_pick():
@@ -213,6 +218,13 @@ def validate_patch(patch):
                 val = max(1, min(MAX_LINEAR_LEDS, int(float(val))))
             except (TypeError, ValueError):
                 continue
+            cleaned[key] = val
+            continue
+        if key == "radiate_corners":
+            if not isinstance(val, list):
+                continue
+            val = [bool(x) for x in val[:CUBE_LINES]]
+            val += [False] * (CUBE_LINES - len(val))
             cleaned[key] = val
             continue
         if key == "color":
