@@ -142,6 +142,9 @@ select {
 
 <h1>LED Control</h1>
 
+<h2>Shape</h2>
+<div class="seg" id="shape"></div>
+
 <h2>Mode</h2>
 <div class="seg" id="mode"></div>
 
@@ -230,6 +233,7 @@ select {
 let state = {};
 let posting = false;
 let pendingPatch = {};
+let renderedModes = "";  // JSON of the mode list last rendered, so we rebuild when shape changes
 
 function fmtSlider(input) {
   const step = input.step || "1";
@@ -258,15 +262,24 @@ function buildSeg(containerId, options, capitalize = true) {
 
 function applyState() {
   // Build segmented controls once based on enums returned by /state
-  if (state.modes && document.querySelectorAll("#mode button").length === 0)
-    buildSeg("mode", state.modes);
+  if (state.shapes && document.querySelectorAll("#shape button").length === 0)
+    buildSeg("shape", state.shapes);
   if (state.color_modes && document.querySelectorAll("#color_mode button").length === 0)
     buildSeg("color_mode", state.color_modes);
   if (state.boundaries && document.querySelectorAll("#agents_boundary button").length === 0)
     buildSeg("agents_boundary", state.boundaries);
 
+  // Mode list changes with shape, so rebuild whenever it differs from last render.
+  if (state.modes) {
+    const key = JSON.stringify(state.modes);
+    if (key !== renderedModes) {
+      buildSeg("mode", state.modes);
+      renderedModes = key;
+    }
+  }
+
   // Set active states on segmented controls
-  ["mode", "color_mode", "agents_boundary"].forEach(key => {
+  ["shape", "mode", "color_mode", "agents_boundary"].forEach(key => {
     document.querySelectorAll(`#${key} button`).forEach(b => {
       b.classList.toggle("active", b.dataset.v === state[key]);
     });

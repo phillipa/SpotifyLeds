@@ -7,7 +7,9 @@ import colorsys
 import threading
 import os
 
-from led_effects import palette_gradient, dnrgb_packets, Pulse, Twinkle, Agents, Cube, Radiate, PALETTES
+from led_effects import palette_gradient, dnrgb_packets, PALETTES
+from led_effects.linear import Pulse, Twinkle, Agents
+from led_effects.cube import Cube, Radiate
 from web_ui import serve
 
 # Hardware / runtime constants — not editable from the UI
@@ -15,6 +17,10 @@ WLED_IP = "192.168.0.194"   # mDNS: wled-0bec08.local
 WLED_PORT = 21324           # WLED realtime UDP (DNRGB)
 HTTP_PORT = 8080
 NUM_LEDS = 1092             # 4 lines x 273 LEDs
+
+# Physical LED arrangement. Sets which effects are available; the UI exposes a
+# shape selector so this can also be switched at runtime.
+SHAPE = "cube"
 
 # Cube geometry: each line is routed bottom -> vertical -> top.
 # Defaults assume equal thirds (273 / 3 = 91); adjust if the physical split differs.
@@ -31,13 +37,26 @@ PALETTE_LOOP = True     # blend the last LED back to the first so scrolling is s
 PEAK_DECAY = 0.999      # auto-gain decay rate
 
 INDEX_HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
-VALID_MODES = ["pulse", "twinkle", "agents", "cube", "radiate"]
+
+# Modes available for each LED arrangement. Adding a new shape-specific effect
+# only requires importing it and listing its name here under the right shape.
+SHAPES = ["linear", "cube", "column"]
+MODES_BY_SHAPE = {
+    "linear": ["pulse", "twinkle", "agents"],
+    "cube":   ["cube", "radiate"],
+    "column": [],
+}
 VALID_COLOR_MODES = ["solid", "palette_linear", "palette_random"]
 VALID_BOUNDARIES = ["wrap", "bounce"]
 
+
+def valid_modes():
+    return MODES_BY_SHAPE.get(settings["shape"], [])
+
 # All UI-editable settings live here. Audio loop reads, HTTP handler writes.
 settings = {
-    "mode": "twinkle",
+    "shape": SHAPE,
+    "mode": MODES_BY_SHAPE[SHAPE][0] if MODES_BY_SHAPE[SHAPE] else "",
     "color_mode": "palette_random",
     "palette": "purplesgreens",
     "color": [255, 255, 255],
@@ -67,11 +86,17 @@ last_switch = 0.0
 
 
 def build_effect():
-    """Construct a fresh effect instance from the current settings."""
+    """Construct a fresh effect instance from the current settings.
+
+    Returns None when the current shape has no modes available — the audio
+    loop renders an all-dark frame in that case.
+    """
     s = settings
     color = tuple(s["color"])
     cm = s["color_mode"]
     mode = s["mode"]
+    if not mode:
+        return None
     if mode == "pulse":
         return Pulse(NUM_LEDS, color_mode=cm, color=color,
                      attack=s["pulse_attack"], release=s["pulse_release"],
@@ -107,12 +132,19 @@ def build_effect():
 # Settings whose change requires rebuilding the effect (different class or
 # different agent population). Other tunables can be mutated live without
 # losing accumulated state (twinkle sparkles, agent positions, etc.).
-STRUCTURAL_KEYS = {"mode", "color_mode", "agents_count"}
+STRUCTURAL_KEYS = {"shape", "mode", "color_mode", "agents_count"}
 
 
 def apply_settings(changed_keys):
     """Propagate settings changes to the running effect. Caller must hold settings_lock."""
     global effect_fn, base_pixels
+
+    # If shape changed and the current mode isn't valid for the new shape,
+    # auto-switch to the first available mode (or "" if there are none).
+    if "shape" in changed_keys:
+        modes = valid_modes()
+        if settings["mode"] not in modes:
+            settings["mode"] = modes[0] if modes else ""
 
     if STRUCTURAL_KEYS & changed_keys:
         effect_fn = build_effect()
@@ -121,6 +153,9 @@ def apply_settings(changed_keys):
 
     if "palette" in changed_keys:
         base_pixels = palette_gradient(settings["palette"], NUM_LEDS, loop=PALETTE_LOOP)
+
+    if effect_fn is None:
+        return  # no live effect to tune
 
     if "color" in changed_keys:
         effect_fn.color = tuple(settings["color"])
@@ -146,12 +181,15 @@ def apply_settings(changed_keys):
 
 def random_pick():
     r, g, b = colorsys.hsv_to_rgb(random.random(), 1.0, 1.0)
-    return {
-        "mode": random.choice(VALID_MODES),
+    modes = valid_modes()
+    pick = {
         "color_mode": random.choice(VALID_COLOR_MODES),
         "palette": random.choice(list(PALETTES.keys())),
         "color": [int(r * 255), int(g * 255), int(b * 255)],
     }
+    if modes:
+        pick["mode"] = random.choice(modes)
+    return pick
 
 
 def validate_patch(patch):
@@ -162,7 +200,9 @@ def validate_patch(patch):
     for key, val in patch.items():
         if key not in settings:
             continue
-        if key == "mode" and val not in VALID_MODES:
+        if key == "shape" and val not in SHAPES:
+            continue
+        if key == "mode" and val not in valid_modes():
             continue
         if key == "color_mode" and val not in VALID_COLOR_MODES:
             continue
@@ -237,7 +277,10 @@ def audio_loop():
 
                 shift = int(shift_offset) % NUM_LEDS
                 rotated = base_pixels[shift:] + base_pixels[:shift]
-                pixels = effect_fn(rotated, brightness)
+                if effect_fn is None:
+                    pixels = [(0, 0, 0)] * NUM_LEDS
+                else:
+                    pixels = effect_fn(rotated, brightness)
 
             for packet in dnrgb_packets(pixels, COLOR_ORDER):
                 sock.sendto(packet, (WLED_IP, WLED_PORT))
@@ -255,7 +298,8 @@ def state_payload():
     return {
         **settings,
         "palettes": list(PALETTES.keys()),
-        "modes": VALID_MODES,
+        "shapes": SHAPES,
+        "modes": valid_modes(),
         "color_modes": VALID_COLOR_MODES,
         "boundaries": VALID_BOUNDARIES,
     }

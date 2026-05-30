@@ -22,15 +22,22 @@ pip install pyaudio numpy
 
 ## Configuration
 
-Hardware constants live at the top of [spotify_led_http.py](spotify_led_http.py:14-19). Edit these to match your setup:
+Hardware constants live at the top of [spotify_led_http.py](spotify_led_http.py). Edit these to match your setup:
 
 ```python
-WLED_IP = "192.168.1.124"   # your WLED controller's IP
-WLED_PORT = 19446           # WLED UDP realtime port
+WLED_IP = "192.168.0.194"   # your WLED controller's IP (or mDNS name)
+WLED_PORT = 21324           # WLED realtime UDP port (DNRGB)
 HTTP_PORT = 8080            # web UI port
-NUM_LEDS = 90
+NUM_LEDS = 1092             # total LEDs on the strip
+SHAPE = "cube"              # "linear" | "cube" | "column" — picks the available effects
 COLOR_ORDER = "RGB"         # try "GRB" if colors look swapped
 ```
+
+`SHAPE` is the default; the web UI also exposes a Shape selector so it can be switched at runtime (handy when the same Mac drives different physical setups). Each shape exposes a different mode list:
+
+- `linear` — Pulse, Twinkle, Agents (geometry-agnostic)
+- `cube` — Cube, Radiate (4-line cube layout; see `CUBE_*` constants for per-face LED counts)
+- `column` — placeholder, no effects yet
 
 Audio device selection is automatic — the script searches for any input device with `BlackHole` in its name. Use [TestingScripts/list_audio_devices.py](TestingScripts/list_audio_devices.py) to see what's available if it can't find one.
 
@@ -46,8 +53,8 @@ It prints the web UI URL on startup, e.g. `http://yourmac.local:8080/`. Open it 
 
 | File | Purpose |
 | --- | --- |
-| [spotify_led_http.py](spotify_led_http.py) | Entry point. Audio capture loop, settings store, HTTP wiring. |
-| [led_effects.py](led_effects.py) | Palettes, gradient builder, four effect classes, WLED UDP packet builder. |
+| [spotify_led_http.py](spotify_led_http.py) | Entry point. Audio capture loop, settings store, HTTP wiring, shape/mode dispatch. |
+| [led_effects/](led_effects/) | Effect package: `common` (palettes, base class, WLED packet builder), `linear` (Pulse/Twinkle/Agents), `cube` (Cube/Radiate), `column` (placeholder). |
 | [web_ui.py](web_ui.py) | `http.server`-based JSON API. State management is injected via callables. |
 | [index.html](index.html) | Mobile-first control panel (vanilla JS, no build step). |
 | [TestingScripts/](TestingScripts/) | Standalone helpers: audio device enumeration, a sACN/DMX smoke test, and an earlier prototype. |
