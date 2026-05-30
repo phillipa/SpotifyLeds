@@ -142,6 +142,54 @@ class Progressive(_ColoredEffect):
         return list(colors[:lit]) + [(0, 0, 0)] * (self.num_leds - lit)
 
 
+class Radiate(_ColoredEffect):
+    """Progressive variant radiating from each line's top corner.
+
+    For each line (laid out bottom -> vertical -> top), the bottom face is
+    always dark. From the top corner — the bend where vertical meets top —
+    light fills two directions in sync with the audio level:
+
+      * down the vertical column, starting from the topmost LED
+      * outward along the top face, starting at the corner
+
+    Both segments fill to the same fraction of their length, so at brightness
+    50% the upper half of each vertical and the corner-side half of each top
+    strip are lit. The opposite end of the top face stays dark until peak
+    audio, matching the request that the top fills fractionally (not all at
+    once).
+    """
+    def __init__(self, num_leds, color_mode="palette_linear", color=(255, 255, 255),
+                 lines=4, leds_per_line=273,
+                 bottom_leds=91, vertical_leds=91, top_leds=91):
+        super().__init__(num_leds, color_mode, color)
+        self.lines = lines
+        self.leds_per_line = leds_per_line
+        self.bottom_leds = bottom_leds
+        self.vertical_leds = vertical_leds
+        self.top_leds = top_leds
+
+    def __call__(self, pixels, brightness):
+        colors = self._resolve_colors(pixels)
+        frac = brightness / 255.0
+        v_lit = int(round(frac * self.vertical_leds))
+        t_lit = int(round(frac * self.top_leds))
+        out = [(0, 0, 0)] * self.num_leds
+        for line in range(self.lines):
+            base = line * self.leds_per_line
+            v_start = base + self.bottom_leds
+            corner = v_start + self.vertical_leds  # first index of top strip
+            # Vertical column: light v_lit LEDs working DOWN from the top corner.
+            for j in range(v_lit):
+                idx = corner - 1 - j
+                out[idx] = colors[idx]
+            # Top strip: light t_lit LEDs working OUTWARD from the top corner.
+            for j in range(t_lit):
+                idx = corner + j
+                out[idx] = colors[idx]
+            # Bottom face stays dark.
+        return out
+
+
 class Cube(_ColoredEffect):
     """Progressive variant for a 4-line cube layout.
 

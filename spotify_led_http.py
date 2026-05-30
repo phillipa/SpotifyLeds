@@ -7,7 +7,7 @@ import colorsys
 import threading
 import os
 
-from led_effects import palette_gradient, dnrgb_packets, Pulse, Progressive, Twinkle, Agents, Cube, PALETTES
+from led_effects import palette_gradient, dnrgb_packets, Pulse, Progressive, Twinkle, Agents, Cube, Radiate, PALETTES
 from web_ui import serve
 
 # Hardware / runtime constants — not editable from the UI
@@ -31,7 +31,7 @@ PALETTE_LOOP = True     # blend the last LED back to the first so scrolling is s
 PEAK_DECAY = 0.999      # auto-gain decay rate
 
 INDEX_HTML_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html")
-VALID_MODES = ["pulse", "progressive", "twinkle", "agents", "cube"]
+VALID_MODES = ["pulse", "progressive", "twinkle", "agents", "cube", "radiate"]
 VALID_COLOR_MODES = ["solid", "palette_linear", "palette_random"]
 VALID_BOUNDARIES = ["wrap", "bounce"]
 
@@ -97,6 +97,12 @@ def build_effect():
                     bottom_leds=CUBE_BOTTOM_LEDS,
                     vertical_leds=CUBE_VERTICAL_LEDS,
                     top_leds=CUBE_TOP_LEDS)
+    if mode == "radiate":
+        return Radiate(NUM_LEDS, color_mode=cm, color=color,
+                       lines=CUBE_LINES, leds_per_line=CUBE_LINE_LEDS,
+                       bottom_leds=CUBE_BOTTOM_LEDS,
+                       vertical_leds=CUBE_VERTICAL_LEDS,
+                       top_leds=CUBE_TOP_LEDS)
     raise ValueError(f"Unknown mode: {mode}")
 
 
