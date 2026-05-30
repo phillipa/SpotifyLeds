@@ -306,13 +306,31 @@ class Agents:
         return list(self.state)
 
 
-def to_packet(pixels, color_order="RGB"):
-    """Flatten a list of (r, g, b) tuples into a bytes packet for WLED UDP."""
-    order = {"RGB": (0, 1, 2), "GRB": (1, 0, 2), "BRG": (2, 0, 1),
-             "BGR": (2, 1, 0), "GBR": (1, 2, 0), "RBG": (0, 2, 1)}[color_order]
-    out = bytearray(len(pixels) * 3)
-    for i, px in enumerate(pixels):
-        out[i*3 + 0] = px[order[0]]
-        out[i*3 + 1] = px[order[1]]
-        out[i*3 + 2] = px[order[2]]
-    return bytes(out)
+_COLOR_ORDERS = {"RGB": (0, 1, 2), "GRB": (1, 0, 2), "BRG": (2, 0, 1),
+                 "BGR": (2, 1, 0), "GBR": (1, 2, 0), "RBG": (0, 2, 1)}
+
+
+def dnrgb_packets(pixels, color_order="RGB", timeout_secs=2, leds_per_chunk=480):
+    """Yield DNRGB-framed UDP packets covering the full strip.
+
+    DNRGB (protocol 4) is WLED's realtime UDP format for long strips:
+
+        byte 0:    4                  (protocol = DNRGB)
+        byte 1:    timeout_secs       (WLED reverts when no packets arrive for this long)
+        byte 2-3:  start LED index, big-endian uint16
+        byte 4+:   RGB triples
+
+    Splitting at 480 LEDs/chunk keeps each packet's payload under the safe
+    UDP-over-Ethernet MTU (~1472 bytes) so nothing relies on IP fragmentation.
+    """
+    order = _COLOR_ORDERS[color_order]
+    n = len(pixels)
+    for start in range(0, n, leds_per_chunk):
+        chunk = pixels[start:start + leds_per_chunk]
+        header = bytes([4, timeout_secs, (start >> 8) & 0xFF, start & 0xFF])
+        body = bytearray(len(chunk) * 3)
+        for i, px in enumerate(chunk):
+            body[i*3 + 0] = px[order[0]]
+            body[i*3 + 1] = px[order[1]]
+            body[i*3 + 2] = px[order[2]]
+        yield header + bytes(body)

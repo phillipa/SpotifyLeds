@@ -7,14 +7,14 @@ import colorsys
 import threading
 import os
 
-from led_effects import palette_gradient, to_packet, Pulse, Progressive, Twinkle, Agents, PALETTES
+from led_effects import palette_gradient, dnrgb_packets, Pulse, Progressive, Twinkle, Agents, PALETTES
 from web_ui import serve
 
 # Hardware / runtime constants — not editable from the UI
-WLED_IP = "192.168.1.124"
-WLED_PORT = 19446
+WLED_IP = "192.168.0.194"   # mDNS: wled-0bec08.local
+WLED_PORT = 21324           # WLED realtime UDP (DNRGB)
 HTTP_PORT = 8080
-NUM_LEDS = 90
+NUM_LEDS = 1092             # 4 segments x 273 LEDs
 COLOR_ORDER = "RGB"
 
 PALETTE_SHIFT = 0.5     # LEDs to scroll the palette per frame
@@ -220,7 +220,8 @@ def audio_loop():
                 rotated = base_pixels[shift:] + base_pixels[:shift]
                 pixels = effect_fn(rotated, brightness)
 
-            sock.sendto(to_packet(pixels, COLOR_ORDER), (WLED_IP, WLED_PORT))
+            for packet in dnrgb_packets(pixels, COLOR_ORDER):
+                sock.sendto(packet, (WLED_IP, WLED_PORT))
             shift_offset += PALETTE_SHIFT
             time.sleep(0.01)
     finally:
@@ -283,7 +284,7 @@ def main():
                    apply_patch=apply_patch,
                    randomize=randomize_now,
                    index_html_path=INDEX_HTML_PATH)
-    hostname = socket.gethostname()
+    hostname = socket.gethostname().removesuffix(".local")
     print(f"Web UI: http://{hostname}.local:{HTTP_PORT}/")
     print(f"Initial: mode={settings['mode']} color_mode={settings['color_mode']} "
           f"palette={settings['palette']} color={settings['color']}")
